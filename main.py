@@ -1,4 +1,4 @@
-import os, time, requests, psycopg2
+import os, time, requests, psycopg2, json
 from psycopg2.extras import execute_values
 
 ZENDESK_SUBDOMAIN = os.getenv("ZENDESK_SUBDOMAIN")
@@ -26,6 +26,14 @@ def fetch_tickets(url):
 def upsert_tickets(tickets):
     rows = []
     for t in tickets:
+        # Convert dict/list to JSON string only for JSONB columns
+        def to_json(value):
+            if value is None:
+                return None
+            if isinstance(value, (dict, list)):
+                return json.dumps(value)
+            return value
+
         rows.append((
             t.get("id"), t.get("url"), t.get("external_id"),
             t.get("created_at"), t.get("updated_at"), t.get("type"),
@@ -34,10 +42,14 @@ def upsert_tickets(tickets):
             t.get("requester_id"), t.get("submitter_id"), t.get("assignee_id"),
             t.get("organization_id"), t.get("group_id"), t.get("brand_id"),
             t.get("ticket_form_id"), t.get("problem_id"), t.get("has_incidents"),
-            t.get("due_at"), t.get("collaborator_ids", []), t.get("follower_ids", []),
-            t.get("email_cc_ids", []), t.get("sharing_agreement_ids", []),
-            t.get("tags", []), t.get("via"), t.get("satisfaction_rating"),
-            t.get("custom_fields"), t
+            t.get("due_at"),
+            # Array columns - pass as Python lists
+            t.get("collaborator_ids"), t.get("follower_ids"),
+            t.get("email_cc_ids"), t.get("sharing_agreement_ids"),
+            t.get("tags"),
+            # JSONB columns - convert to JSON strings
+            to_json(t.get("via")), to_json(t.get("satisfaction_rating")),
+            to_json(t.get("custom_fields")), to_json(t)
         ))
 
     execute_values(cur, """
