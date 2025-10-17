@@ -1,6 +1,7 @@
 import os, time, requests, psycopg2, json, datetime
 from psycopg2.extras import execute_values
 
+VERSION = "1.0.3"
 ZENDESK_SUBDOMAIN = os.getenv("ZENDESK_SUBDOMAIN")
 ZENDESK_EMAIL = os.getenv("ZENDESK_EMAIL")
 ZENDESK_TOKEN = os.getenv("ZENDESK_TOKEN")
@@ -78,7 +79,7 @@ def upsert_tickets(tickets):
     conn.commit()
 
 def run_sync():
-    print("🔁 Starting Zendesk sync...")
+    print(f"🔁 Starting Zendesk sync... (v{VERSION})")
     
     # Use Incremental Ticket Export API to get ALL tickets (no limits)
     # This API is specifically designed for full exports and syncs
