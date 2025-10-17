@@ -1,4 +1,4 @@
-import os, time, requests, psycopg2, json
+import os, time, requests, psycopg2, json, datetime
 from psycopg2.extras import execute_values
 
 ZENDESK_SUBDOMAIN = os.getenv("ZENDESK_SUBDOMAIN")
@@ -21,7 +21,13 @@ cur = conn.cursor()
 def fetch_tickets(url):
     res = requests.get(url, auth=(f"{ZENDESK_EMAIL}/token", ZENDESK_TOKEN))
     res.raise_for_status()
-    return res.json()
+    data = res.json()
+    # Debug logging
+    print(f"📊 API Response - Tickets in batch: {len(data.get('tickets', []))}")
+    print(f"📊 Has 'next' link: {bool(data.get('links', {}).get('next'))}")
+    if 'meta' in data:
+        print(f"📊 Meta info: {data['meta']}")
+    return data
 
 def upsert_tickets(tickets):
     rows = []
@@ -73,18 +79,67 @@ def upsert_tickets(tickets):
 
 def run_sync():
     print("🔁 Starting Zendesk sync...")
-    url = f"https://{ZENDESK_SUBDOMAIN}.zendesk.com/api/v2/tickets.json?page[size]=100"
+    
+    # Use Incremental Ticket Export API to get ALL tickets (no limits)
+    # This API is specifically designed for full exports and syncs
+    if INITIAL_FULL_PULL:
+        # Start from Unix epoch (0) to get all tickets ever created
+        start_time = 0
+        print("📦 Running FULL SYNC - fetching all tickets from the beginning...")
+    else:
+        # Get the most recent ticket's updated_at timestamp from DB for incremental sync
+        cur.execute("SELECT MAX(updated_at) FROM zendesk_tickets")
+        result = cur.fetchone()[0]
+        if result:
+            start_time = int(datetime.datetime.fromisoformat(result.replace('Z', '+00:00')).timestamp())
+            print(f"🔄 Running INCREMENTAL SYNC from timestamp {start_time}...")
+        else:
+            start_time = 0
+            print("📦 No existing tickets found - running FULL SYNC...")
+    
+    url = f"https://{ZENDESK_SUBDOMAIN}.zendesk.com/api/v2/incremental/tickets.json?start_time={start_time}"
     count = 0
+    page_num = 0
+    
     while url:
+        page_num += 1
+        print(f"📄 Fetching page {page_num}...")
         data = fetch_tickets(url)
         tickets = data.get("tickets", [])
+        
         if not tickets:
+            print("⚠️  No tickets in response")
+            # Check if we've reached the end
+            if data.get("end_of_stream", False):
+                print("✅ Reached end of stream")
+                break
+            # If end_time is present, continue from there
+            if "end_time" in data:
+                url = f"https://{ZENDESK_SUBDOMAIN}.zendesk.com/api/v2/incremental/tickets.json?start_time={data['end_time']}"
+                continue
             break
+        
         upsert_tickets(tickets)
         count += len(tickets)
         print(f"✅ Upserted {count} tickets so far...")
-        url = data.get("links", {}).get("next")
+        
+        # Check if we've reached the end of the stream
+        if data.get("end_of_stream", False):
+            print("✅ Reached end of stream")
+            break
+        
+        # Get next URL or construct from end_time
+        next_url = data.get("next_page")
+        if next_url:
+            url = next_url
+        elif "end_time" in data:
+            url = f"https://{ZENDESK_SUBDOMAIN}.zendesk.com/api/v2/incremental/tickets.json?start_time={data['end_time']}"
+        else:
+            print("⚠️  No next_page or end_time in response")
+            break
+        
         time.sleep(60 / MAX_REQUESTS_PER_MIN)
+    
     print(f"🎯 Sync complete — {count} tickets total.")
 
 if __name__ == "__main__":
