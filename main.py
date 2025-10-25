@@ -1,7 +1,7 @@
 import os, time, requests, psycopg2, json, datetime
 from psycopg2.extras import execute_values
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 ZENDESK_SUBDOMAIN = os.getenv("ZENDESK_SUBDOMAIN")
 ZENDESK_EMAIL = os.getenv("ZENDESK_EMAIL")
 ZENDESK_TOKEN = os.getenv("ZENDESK_TOKEN")
@@ -56,7 +56,9 @@ def upsert_tickets(tickets):
             t.get("tags"),
             # JSONB columns - convert to JSON strings
             to_json(t.get("via")), to_json(t.get("satisfaction_rating")),
-            to_json(t.get("custom_fields")), to_json(t)
+            to_json(t.get("custom_fields")), to_json(t),
+            # Comments and audits - very important for conversation history
+            to_json(t.get("comments")), to_json(t.get("audits"))
         ))
 
     execute_values(cur, """
@@ -67,14 +69,17 @@ def upsert_tickets(tickets):
             organization_id, group_id, brand_id, ticket_form_id,
             problem_id, has_incidents, due_at,
             collaborator_ids, follower_ids, email_cc_ids, sharing_agreement_ids,
-            tags, via, satisfaction_rating, custom_fields, raw
+            tags, via, satisfaction_rating, custom_fields, raw,
+            comments, audits
         ) VALUES %s
         ON CONFLICT (id) DO UPDATE SET
             updated_at = EXCLUDED.updated_at,
             status = EXCLUDED.status,
             assignee_id = EXCLUDED.assignee_id,
             custom_fields = EXCLUDED.custom_fields,
-            raw = EXCLUDED.raw;
+            raw = EXCLUDED.raw,
+            comments = EXCLUDED.comments,
+            audits = EXCLUDED.audits;
     """, rows, page_size=100)
     conn.commit()
 
