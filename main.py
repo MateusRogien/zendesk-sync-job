@@ -1,7 +1,7 @@
 import os, time, requests, psycopg2, json, datetime
 from psycopg2.extras import execute_values
 
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 ZENDESK_SUBDOMAIN = os.getenv("ZENDESK_SUBDOMAIN")
 ZENDESK_EMAIL = os.getenv("ZENDESK_EMAIL")
 ZENDESK_TOKEN = os.getenv("ZENDESK_TOKEN")
