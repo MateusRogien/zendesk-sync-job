@@ -56,9 +56,7 @@ def upsert_tickets(tickets):
             t.get("tags"),
             # JSONB columns - convert to JSON strings
             to_json(t.get("via")), to_json(t.get("satisfaction_rating")),
-            to_json(t.get("custom_fields")), to_json(t),
-            # Comments and audits - very important for conversation history
-            to_json(t.get("comments")), to_json(t.get("audits"))
+            to_json(t.get("custom_fields")), to_json(t)
         ))
 
     execute_values(cur, """
@@ -69,17 +67,14 @@ def upsert_tickets(tickets):
             organization_id, group_id, brand_id, ticket_form_id,
             problem_id, has_incidents, due_at,
             collaborator_ids, follower_ids, email_cc_ids, sharing_agreement_ids,
-            tags, via, satisfaction_rating, custom_fields, raw,
-            comments, audits
+            tags, via, satisfaction_rating, custom_fields, raw
         ) VALUES %s
         ON CONFLICT (id) DO UPDATE SET
             updated_at = EXCLUDED.updated_at,
             status = EXCLUDED.status,
             assignee_id = EXCLUDED.assignee_id,
             custom_fields = EXCLUDED.custom_fields,
-            raw = EXCLUDED.raw,
-            comments = EXCLUDED.comments,
-            audits = EXCLUDED.audits;
+            raw = EXCLUDED.raw;
     """, rows, page_size=100)
     conn.commit()
 
